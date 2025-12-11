@@ -29,6 +29,3 @@ Thumbs.db
 *.swp
 *.swo
 
-# Ignore model weights and exports only
-**/models/*.pt
-**/models/model_exports/
