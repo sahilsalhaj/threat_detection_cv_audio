@@ -5,4 +5,7 @@ pillow
 pyyaml
 matplotlib
 psutil
+
+torch
+streamlit
 streamlit
