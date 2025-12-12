@@ -1,29 +1,16 @@
 #!/usr/bin/env python3
 """
-inferencing_yamnet_v2.py
+inferencing_yamnet_v2_test_only.py
 
-Inference script for the trained YAMNet v2 sequence model.
+Runs inference ONLY on the TEST split using the SAME
+parent split logic + random seed as training.
 
-Features:
- - Automatically loads best checkpoint path + best threshold from metrics JSON
- - Loads/caches segment embeddings for the demo folder
- - Reconstructs parent sequences exactly like training
- - Runs inference on each parent
- - Saves results to results/demo_inference_<timestamp>.csv
- - Optional: provide CSV to evaluate accuracy on demo set
-
-Usage:
-  python src/inferencing_yamnet_v2.py --demo_dir demo_testing --csv training_data/all_data_updated.csv
-
-Arguments:
-  --demo_dir     Folder containing .wav segments for demo/real inference
-  --csv          (Optional) CSV with ground truth to evaluate demo accuracy
-  --model_path   Path to model (.keras). If not provided, auto-loads best checkpoint
-  --threshold    Override threshold (otherwise read from metrics JSON)
+No CLI args.
+No re-splitting drift.
+No data leakage.
 """
 
 import os
-import argparse
 import json
 from datetime import datetime
 from collections import defaultdict
@@ -36,217 +23,221 @@ import soundfile as sf
 import tensorflow as tf
 import tensorflow_hub as hub
 
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 
 
-# ---------------------------------------------------
-# Utility
-# ---------------------------------------------------
+# =========================
+# HARD-CODED PATHS
+# =========================
+DATA_DIR = "training_data"
+CSV_PATH = "training_data/all_data_updated.csv"
+RESULTS_DIR = "results"
+YAMNET_HANDLE = "https://tfhub.dev/google/yamnet/1"
+
+SEED = 1337
+TEST_SIZE = 0.15
+VAL_SIZE = 0.15
+MAX_SEGMENTS_CAP = 12
+
+
+# =========================
+# Utilities
+# =========================
 def log(msg):
     print(f"[INF] {msg}")
 
 
-# ---------------------------------------------------
-# Load segment embeddings (same as training)
-# ---------------------------------------------------
-def compute_embeddings_for_folder(folder, yamnet_handle, sr=16000):
-    """
-    Computes embeddings for ALL .wav files in the folder.
-    Returns dict {filename: 1024-d embedding}
-    """
-    yamnet = hub.load(yamnet_handle)
-    log("Loaded YAMNet for inference.")
+# =========================
+# Load best model + threshold
+# =========================
+def load_best_model_and_threshold():
+    metrics_files = sorted(
+        [f for f in os.listdir(RESULTS_DIR) if f.startswith("metrics_summary_v2")],
+        reverse=True
+    )
+    if not metrics_files:
+        raise RuntimeError("No metrics_summary_v2 JSON found")
 
-    seg_files = sorted([f for f in os.listdir(folder) if f.lower().endswith(".wav")])
-    log(f"Found {len(seg_files)} segment files.")
+    metrics_path = os.path.join(RESULTS_DIR, metrics_files[0])
+    with open(metrics_path, "r") as f:
+        m = json.load(f)
+
+    model_path = m["best_ckpt_path"]
+    threshold = m.get("best_threshold", 0.5)
+
+    model = tf.keras.models.load_model(model_path)
+
+    log(f"Loaded model: {model_path}")
+    log(f"Using threshold: {threshold}")
+
+    return model, threshold
+
+
+# =========================
+# Compute YAMNet embeddings
+# =========================
+def compute_embeddings(files, sr=16000):
+    yamnet = hub.load(YAMNET_HANDLE)
+    log("Loaded YAMNet")
 
     mapping = {}
-    for i, seg in enumerate(seg_files):
-        full = os.path.join(folder, seg)
-        try:
-            audio, file_sr = sf.read(full, dtype="float32")
-            if audio.ndim > 1:
-                audio = np.mean(audio, axis=1)
-            if file_sr != sr:
-                audio = librosa.resample(audio, orig_sr=file_sr, target_sr=sr)
-            audio = audio.astype(np.float32)
 
-            scores, embeddings, _ = yamnet(audio)
-            emb_avg = tf.reduce_mean(embeddings, axis=0).numpy()
-            mapping[seg] = emb_avg
-        except Exception as e:
-            log(f"Failed reading {seg}: {e}")
+    for i, fname in enumerate(files):
+        full = os.path.join(DATA_DIR, fname)
+        audio, file_sr = sf.read(full, dtype="float32")
+
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        if file_sr != sr:
+            audio = librosa.resample(audio, orig_sr=file_sr, target_sr=sr)
+
+        _, emb, _ = yamnet(audio)
+        mapping[fname] = tf.reduce_mean(emb, axis=0).numpy()
 
         if (i + 1) % 100 == 0:
-            log(f"Processed {i+1}/{len(seg_files)}")
+            log(f"Processed {i+1}/{len(files)}")
 
     return mapping
 
 
-# ---------------------------------------------------
-# Build parent sequences (same format as training)
-# ---------------------------------------------------
-def build_parent_sequences(mapping, csv_df=None, max_segments_cap=12):
-    """
-    Groups segments into parents using filename patterns like:
-        2022-06-09--12-51-03_1__segment4.wav
-    Parent key = <prefix>.raw
+# =========================
+# EXACT SAME SPLIT AS TRAINING
+# =========================
+def build_test_split(csv_df, segment_files):
+    df = csv_df.copy()
+    df["health"] = (df["queen acceptance"] == 2).astype(int)
 
-    Returns:
-        parents, X_seq, lengths, true_labels(optional), file_lists
-    """
+    # Parent → segments
+    parent_to_segments = defaultdict(list)
+    for f in segment_files:
+        if "__segment" in f:
+            parent = f.split("__segment")[0] + ".raw"
+            parent_to_segments[parent].append(f)
+
+    parents, labels, file_lists = [], [], []
+
+    for _, row in df.iterrows():
+        p = row["file name"]
+        if p in parent_to_segments:
+            parents.append(p)
+            labels.append(int(row["health"]))
+            file_lists.append(sorted(parent_to_segments[p]))
+
+    parents = np.array(parents)
+    labels = np.array(labels)
+    idx = np.arange(len(parents))
+
+    idx_tmp, idx_test = train_test_split(
+        idx, test_size=TEST_SIZE, stratify=labels, random_state=SEED
+    )
+
+    log(f"Using TEST parents: {len(idx_test)}")
+
+    return parents, labels, file_lists, idx_test
+
+
+# =========================
+# Build parent sequences
+# =========================
+def build_parent_sequences(emb_map, csv_df, max_segments_cap=12):
     parent_to_segments = defaultdict(list)
 
-    for seg in mapping.keys():
+    for seg in emb_map.keys():
         if "__segment" not in seg:
             continue
         parent = seg.split("__segment")[0] + ".raw"
         parent_to_segments[parent].append(seg)
 
     parents = sorted(parent_to_segments.keys())
-    file_lists = []
-    lengths = []
 
-    # CSV label mapping if provided
-    label_map = None
-    if csv_df is not None and "file name" in csv_df.columns and "queen acceptance" in csv_df.columns:
-        csv_df = csv_df.copy()
-        csv_df["health"] = (csv_df["queen acceptance"] == 2).astype(int)
-        label_map = dict(zip(csv_df["file name"], csv_df["health"]))
+    csv_df = csv_df.copy()
+    csv_df["health"] = (csv_df["queen acceptance"] == 2).astype(int)
+    label_map = dict(zip(csv_df["file name"], csv_df["health"]))
 
-    # build sequences
-    max_segments = min(
-        max(len(v) for v in parent_to_segments.values()),
-        max_segments_cap
-    )
-    log(f"max_segments used = {max_segments}")
-
-    X = np.zeros((len(parents), max_segments, 1024), dtype=np.float32)
+    X = []          # LIST (not numpy array)
     y_true = []
+    counts = []
 
-    for i, parent in enumerate(parents):
-        segs = sorted(parent_to_segments[parent])[:max_segments]
-        file_lists.append(segs)
-        lengths.append(len(segs))
+    for parent in parents:
+        segs = sorted(parent_to_segments[parent])[:max_segments_cap]
+        counts.append(len(segs))
 
-        # fill sequence
-        for j, seg in enumerate(segs):
-            X[i, j] = mapping[seg]
+        emb_seq = np.stack([emb_map[s] for s in segs], axis=0)
+        X.append(emb_seq.astype(np.float32))
 
-        # label
-        if label_map:
-            y_true.append(label_map.get(parent, -1))
-        else:
-            y_true.append(-1)  # unknown
+        y_true.append(label_map.get(parent, -1))
 
-    return parents, X, np.array(lengths), np.array(y_true), file_lists
+    return parents, X, np.array(y_true), np.array(counts)
 
 
-# ---------------------------------------------------
-# Load model + threshold
-# ---------------------------------------------------
-def load_model_and_threshold(model_path, metrics_json_path, manual_threshold):
-    threshold = None
 
-    if manual_threshold is not None:
-        threshold = manual_threshold
-        log(f"Using manual threshold: {threshold}")
-
-    # auto detect threshold from metrics JSON
-    elif os.path.exists(metrics_json_path):
-        with open(metrics_json_path, "r") as f:
-            m = json.load(f)
-        threshold = m.get("best_threshold", 0.5)
-        log(f"Loaded best_threshold={threshold} from metrics JSON")
-    else:
-        threshold = 0.5
-        log("No metrics JSON found. Using default threshold=0.5")
-
-    model = tf.keras.models.load_model(model_path)
-    log(f"Loaded model: {model_path}")
-
-    return model, threshold
-
-
-# ---------------------------------------------------
-# Main
-# ---------------------------------------------------
+# =========================
+# MAIN
+# =========================
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--demo_dir", type=str, default="demo_testing")
-    parser.add_argument("--csv", type=str, default=None)
-    parser.add_argument("--model_path", type=str, default=None)
-    parser.add_argument("--metrics_json", type=str, default=None)
-    parser.add_argument("--threshold", type=float, default=None)
-    parser.add_argument("--yamnet_handle", type=str, default="https://tfhub.dev/google/yamnet/1")
-    parser.add_argument("--max_segments_cap", type=int, default=12)
-    args = parser.parse_args()
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
 
-    # auto-detect metrics summary JSON if not given
-    if args.metrics_json is None:
-        metrics_files = sorted(
-            [f for f in os.listdir("results") if f.startswith("metrics_summary_v2")],
-            reverse=True
-        )
-        if len(metrics_files) == 0:
-            raise RuntimeError("No metrics_summary_v2 JSON found in results/.")
-        args.metrics_json = os.path.join("results", metrics_files[0])
-        log(f"Auto-selected metrics: {args.metrics_json}")
+    csv_df = pd.read_csv(CSV_PATH)
 
-    # auto-detect best model if not provided
-    if args.model_path is None:
-        with open(args.metrics_json, "r") as f:
-            m = json.load(f)
-        best_path = m.get("best_ckpt_path")
-        if best_path is None or not os.path.exists(best_path):
-            raise RuntimeError("Best checkpoint not found. Provide --model_path manually.")
-        args.model_path = best_path
-        log(f"Auto-selected model: {args.model_path}")
+    segment_files = sorted([
+        f for f in os.listdir(DATA_DIR) if f.lower().endswith(".wav")
+    ])
 
-    # load CSV for evaluation
-    csv_df = pd.read_csv(args.csv) if args.csv else None
-
-    # Compute demo embeddings
-    mapping = compute_embeddings_for_folder(args.demo_dir, args.yamnet_handle)
-
-    # Build parent sequences (same as training)
-    parents, X, lengths, y_true, file_lists = build_parent_sequences(
-        mapping, csv_df, max_segments_cap=args.max_segments_cap
+    parents, labels, file_lists, idx_test = build_test_split(
+        csv_df, segment_files
     )
 
-    # Load model + threshold
-    model, threshold = load_model_and_threshold(args.model_path, args.metrics_json, args.threshold)
+    # Collect only TEST segment files
+    test_segment_files = []
+    for i in idx_test:
+        test_segment_files.extend(file_lists[i])
 
-    # Predict
-    log("Running inference...")
-    scores = model.predict(X).ravel()
-    preds = (scores >= threshold).astype(int)
+    test_segment_files = sorted(set(test_segment_files))
 
-    # Output CSV
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_csv = f"results/demo_inference_{timestamp}.csv"
+    log(f"Total TEST segments: {len(test_segment_files)}")
 
-    df = pd.DataFrame({
-        "parent": parents,
+    emb_map = compute_embeddings(test_segment_files)
+
+    parents_t, X_test, y_test, counts = build_parent_sequences(
+        emb_map,
+        csv_df,
+        max_segments_cap=MAX_SEGMENTS_CAP
+    )
+
+
+    model, threshold = load_best_model_and_threshold()
+
+    log("Running inference on TEST split...")
+    scores = []
+    preds = []
+
+    for seq in X_test:
+        seg_scores = model.predict(seq[np.newaxis, ...], verbose=0).ravel()
+        mean_score = float(np.mean(seg_scores))
+        scores.append(mean_score)
+        preds.append(int(mean_score >= threshold))
+
+
+    # Save results
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_csv = os.path.join(RESULTS_DIR, f"test_inference_{ts}.csv")
+
+    pd.DataFrame({
+        "parent": parents_t,
         "probability_healthy": scores,
-        "pred_label": preds,
-        "true_label": y_true,
-        "segment_count": lengths
-    })
-    df.to_csv(out_csv, index=False)
+        "prediction": preds,
+        "true_label": y_test,
+        "segment_count": counts
+    }).to_csv(out_csv, index=False)
 
-    log(f"Saved detailed inference results → {out_csv}")
+    log(f"Saved → {out_csv}")
 
-    # If ground-truth exists, print accuracy metrics
-    if csv_df is not None:
-        valid_idx = y_true != -1
-        if valid_idx.sum() > 0:
-            print("\n===== DEMO SET EVALUATION =====")
-            print(classification_report(y_true[valid_idx], preds[valid_idx]))
-            print("Confusion Matrix:")
-            print(confusion_matrix(y_true[valid_idx], preds[valid_idx]))
-
-    print("\nInference complete!")
+    print("\n===== TEST SET PERFORMANCE =====")
+    print(classification_report(y_test, preds))
+    print("Confusion Matrix:")
+    print(confusion_matrix(y_test, preds))
 
 
 if __name__ == "__main__":

@@ -269,10 +269,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default="training_data")
     parser.add_argument("--csv", type=str, default="all_data_updated.csv")
-    parser.add_argument("--results_dir", type=str, default="results")
-    parser.add_argument("--models_dir", type=str, default="models")
+    parser.add_argument("--results_dir", type=str, default="results/yamnet_results")
+    parser.add_argument("--models_dir", type=str, default="models/yamnet_models")
     parser.add_argument("--yamnet_handle", type=str, default="https://tfhub.dev/google/yamnet/1")
-    parser.add_argument("--cache_name", type=str, default="results/segment_embeddings_cache_v2.npz")
+    parser.add_argument("--cache_name", type=str, default="segment_embeddings_cache_v2.npz")
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch", type=int, default=32)
     parser.add_argument("--val_size", type=float, default=0.15)
@@ -449,7 +449,7 @@ def main():
                         X_test=X_test, y_test=y_test)
     log("Saved parent split embeddings")
 
-    log("ALL DONE. Artifacts saved in results/ and models/")
+    log("ALL DONE. Artifacts saved in results/yamnet_results and models/yamnet_models.")
 
 if __name__ == "__main__":
     main()

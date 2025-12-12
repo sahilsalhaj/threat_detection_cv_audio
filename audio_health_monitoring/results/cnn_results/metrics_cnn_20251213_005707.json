@@ -1,0 +1,22 @@
+{
+  "timestamp": "20251213_005707",
+  "roc_auc": 0.9962676619568115,
+  "average_precision": 0.99805732087709,
+  "best_threshold": 0.4791489361702128,
+  "confusion_matrix": [
+    [
+      56,
+      6
+    ],
+    [
+      0,
+      121
+    ]
+  ],
+  "class_counts": {
+    "1": 121,
+    "0": 62
+  },
+  "model_final_path": "models/cnn_models\\cnn_final_20251213_005707.keras",
+  "best_ckpt_path": "models/cnn_models\\cnn_best_20251213_005707.keras"
+}

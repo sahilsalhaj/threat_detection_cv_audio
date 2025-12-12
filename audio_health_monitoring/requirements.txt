@@ -11,3 +11,5 @@ tensorflow-hub
 torch
 torchaudio
 torchvision
+matplotlib
+seaborn
