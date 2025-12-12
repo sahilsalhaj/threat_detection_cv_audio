@@ -4,24 +4,6 @@
 This project implements a production-ready audio-based beehive health classifier using **YAMNet embeddings + a sequence classifier**.  
 It supports full training, evaluation, artifact logging, demos, and inference.
 
----
-
-## 📦 Folder Structure
-
-```
-apiculture_final/
-└── audio_health_monitoring/
-    ├── src/
-    │   ├── train_yamnet_v2.py
-    │   ├── inferencing_yamnet_v2.py
-    │   └── (other scripts)
-    ├── training_data/
-    │   ├── all_data_updated.csv
-    │   ├── *.wav (segments)
-    ├── demo_testing/
-    ├── results/
-    └── models/
-```
 
 ---
 
@@ -110,8 +92,7 @@ models/
 This script:
 
 - Loads the **best checkpoint** automatically  
-- Loads the **best threshold** from the metrics JSON  
-- Computes embeddings for all `.wav` in `demo_testing/`
+- Loads the **best threshold** from the metrics JSON 
 - Builds parent sequences exactly like training
 - Predicts & saves results to:
 
@@ -120,9 +101,9 @@ results/demo_inference_<timestamp>.csv
 ```
 
 ### **Run Inference:**
-
+git status
 ```
-python src/inferencing_yamnet_v2.py --demo_dir demo_testing --csv training_data/all_data_updated.csv
+python src/inferencing_yamnet_v2.py
 ```
 
 The CSV will include:
@@ -156,23 +137,6 @@ Includes:
 - Recall
 - F1‑Score
 - Support (samples per class)
-
----
-
-## 📁 Demo Testing Folder
-
-You can place any new hive audio segments here:
-
-```
-demo_testing/
-    2022-07-11--15-32-01_1__segment0.wav
-    2022-07-11--15-32-01_1__segment1.wav
-    ...
-```
-
-The inference script automatically:
-- Groups them by parent
-- Produces predictions
 
 ---
 

@@ -21,16 +21,26 @@ Refer to the `cv_threat_detection` folder for:
 
 ## 2. Audio Health Monitoring
 
-This project aims to assess the health of bee colonies using audio signals recorded from beehives. The goal is to:
+This project evaluates **beehive colony health using audio signals**, with the goal of classifying **healthy vs unhealthy (queen acceptance failure)** hives from continuous hive sounds.
 
-- **Train a Convolutional Network (CNN):** Use beehive audio recordings to teach a neural network to classify the health status of the colony (healthy or unhealthy).
-- **Future Work:** Data collection, preprocessing, model training, and evaluation will be implemented here.
+The system implements **two complementary audio pipelines**:
+
+- **YAMNet v2 (Embedding + Sequence Model)**
+  - Uses **pretrained YAMNet** to extract 1024-dim embeddings from 1-second audio segments  
+  - Groups segments by hive recording (“parent”)  
+  - Applies a **BiLSTM-based sequence classifier** for parent-level prediction  
+  - Includes threshold tuning, ROC/PR analysis, and full artifact logging  
+
+- **CNN on Log-Mel Spectrograms (Direct Audio Learning)**
+  - Trains a **custom 2D CNN** directly on log-mel spectrograms  
+  - Performs **segment-level inference** with **parent-level aggregation**  
+  - Avoids pretrained embeddings, enabling task-specific feature learning  
+  - Achieved **significantly higher accuracy** than the YAMNet pipeline on this dataset
+    
+
 
 Refer to the `audio_health_monitoring` folder for:
-- Planned code and models (`src/`, `models/`)
-- Training data (`training_data/`)
-- Results and notebooks (`results/`, `notebooks/`)
-
----
-
-This project is designed to provide a comprehensive toolkit for apiculture monitoring using both visual and audio data. For more details, see the README files in each sub-project folder.
+- Training & inference scripts (`src/`)
+- Audio datasets (`training_data/`)
+- Trained models (`models/`)
+- Evaluation metrics and artifacts (`results/`)

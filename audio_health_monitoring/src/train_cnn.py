@@ -354,7 +354,7 @@ def main():
     tf.random.set_seed(args.seed)
 
     check_gpu()
-    ensure_dirs(args.results_dir, args.models_dir, "demo_testing/cnn_demo")
+    ensure_dirs(args.results_dir, args.models_dir)
 
     # CSV
     csv_path = os.path.join(args.data_dir, args.csv)
@@ -549,31 +549,7 @@ def main():
 
     log(f"TEST RESULTS — ROC AUC={roc_auc:.4f}, AP={ap:.4f}")
 
-    # --------------------------------------------------------------
-    # Create Demo Folder
-    # --------------------------------------------------------------
-    demo_dir = "demo_testing/cnn_demo"
-    if os.path.exists(demo_dir):
-        shutil.rmtree(demo_dir)
-    os.makedirs(demo_dir)
-
-    healthy = [p for p,l in zip(test_parents, parent_test_true) if l==1]
-    unhealthy = [p for p,l in zip(test_parents, parent_test_true) if l==0]
-
-    chosen = []
-    if len(healthy)>=2 and len(unhealthy)>=2:
-        chosen = healthy[:2] + unhealthy[:2]
-    else:
-        chosen = (healthy + unhealthy)[:4]
-
-    log(f"Demo parents selected: {chosen}")
-
-    for p in chosen:
-        prefix = p.replace(".raw","__segment")
-        for f in os.listdir(args.data_dir):
-            if f.startswith(prefix) and f.endswith(".wav"):
-                shutil.copy(os.path.join(args.data_dir, f), os.path.join(demo_dir, f))
-
+    
     log("CNN training complete. Artifacts saved.")
 
 
