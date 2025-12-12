@@ -1,0 +1,13 @@
+numpy
+pandas
+scikit-learn
+soundfile
+librosa
+opencv-python
+
+tensorflow
+tensorflow-hub
+
+torch
+torchaudio
+torchvision

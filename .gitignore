@@ -3,6 +3,8 @@
 **/.venv/
 **/venv/
 **/env/
+audio_health_monitoring/audio_env/
+cv_threat_detection/cv_env/
 
 # Ignore Python cache
 **/__pycache__/
@@ -24,6 +26,9 @@ Thumbs.db
 
 # Ignore logs
 **/*.log
+audio_health_monitoring/yamnet_debug_log.txt
+audio_health_monitoring/error_log.txt
+cv_threat_detection/*.log
 
 # Ignore system files
 *.swp
