@@ -1,6 +1,6 @@
 ultralytics>=8.3.0
 opencv-python
-numpy
+numpy<2
 pillow
 pyyaml
 matplotlib
@@ -8,3 +8,5 @@ psutil
 
 torch
 streamlit
+seaborn
+tensorflow-hub

@@ -1,0 +1,45 @@
+import os
+import sounddevice as sd
+import soundfile as sf
+
+DEMO_DIR = "demo_audio"
+
+# =========================
+# CHOOSE WHAT TO PLAY
+# =========================
+PLAY = "healthy"    # "healthy" or "unhealthy"
+
+# =========================
+# LIST FILES
+# =========================
+files = sorted(
+    f for f in os.listdir(DEMO_DIR)
+    if f.endswith(".wav") and f.startswith(PLAY)
+)
+
+if not files:
+    raise RuntimeError(f"No {PLAY} files found in {DEMO_DIR}")
+
+print(f"\nAvailable {PLAY} samples:")
+for i, f in enumerate(files):
+    print(f"  [{i}] {f}")
+
+# =========================
+# PICK ONE
+# =========================
+idx = int(input("\nEnter index to play: "))
+file_path = os.path.join(DEMO_DIR, files[idx])
+
+# =========================
+# PLAY
+# =========================
+audio, sr = sf.read(file_path)
+
+print(f"\nPlaying: {files[idx]}  @ {sr} Hz")
+print("Press ENTER to stop")
+
+sd.play(audio, sr)
+input()
+sd.stop()
+
+print("Done.")
